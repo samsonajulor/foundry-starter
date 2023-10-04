@@ -11,6 +11,8 @@ import "../lib/openzeppelin-contracts/contracts/token/ERC721/IERC721.sol";
 
 interface INFTProto {
     function mintNFT(address recipient, string memory _tokenURI) external;
+
+    function setApprovalForAll(address operator, bool _approved) external;
 }
 
 contract NFTMarketplaceTest is Test {
@@ -84,9 +86,36 @@ contract NFTMarketplaceTest is Test {
         //create a new nft contract
         INFTProto nftContract = INFTProto(nftMarketPlaceContract.acceptedNFTContracts(1));
 
-       nftContract.setApprovalForAll(address(nftMarketPlaceContract), true);
+    //    nftContract.setApprovalForAll(address(nftMarketPlaceContract), true);
 
 
+        nftMarketPlaceContract.createOrder{value: price}(
+            _tokenId,
+            price,
+            deadline,
+            signature
+        );
+    }
+
+    function testInvalidTradeState() public {
+        console2.logUint(_tradeState);
+        console2.logString("<<<<<<trade state>>>>>>");
+
+        (address seller, uint256 price, uint256 deadline, bool isActive, bytes memory signature) = nftMarketPlaceContract.getOrder(_tokenId);
+
+        deadline = block.timestamp + 1000;
+
+        price = _price;
+
+
+        nftMarketPlaceContract.createOrder{value: price}(
+            _tokenId,
+            price,
+            deadline,
+            signature
+        );
+        
+        vm.expectRevert(bytes("Invalid trade state"));
         nftMarketPlaceContract.createOrder{value: price}(
             _tokenId,
             price,
@@ -141,3 +170,5 @@ contract NFTMarketplaceTest is Test {
     //     // vm.stopPrank();
     // }
 }
+
+

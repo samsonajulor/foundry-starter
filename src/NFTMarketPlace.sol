@@ -95,6 +95,8 @@ contract NFTMarketplace is ReentrancyGuard, Ownable {
 
         orderCounter += 1;
 
+        tradeStates[_tokenId] = 1;
+
         emit OrderCreated(msg.sender, _tokenId, _price, _deadline);
     }
 
