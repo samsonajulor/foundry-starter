@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.13;
+// import console2
+import {console2} from "forge-std/console2.sol";
 
 library SignUtils {
     function constructMessageHash(
@@ -9,7 +11,7 @@ library SignUtils {
         uint88 _deadline,
         address _seller
     ) public pure returns (bytes32) {
-        return keccak256(abi.encodePacked(_token, _tokenId));
+        return keccak256(abi.encodePacked(_token, _tokenId, _price, _deadline, _seller));
     }
 
     function isValid(
@@ -18,6 +20,10 @@ library SignUtils {
         address signer
     ) internal pure returns (bool) {
         bytes32 ethSignedMessageHash = getEthSignedMessageHash(messageHash);
+
+        console2.logAddress(recoverSigner(ethSignedMessageHash, signature));
+
+        console2.log(signer);
 
         return recoverSigner(ethSignedMessageHash, signature) == signer;
     }

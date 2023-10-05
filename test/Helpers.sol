@@ -43,7 +43,9 @@ abstract contract Helpers is Test {
         sig = bytes.concat(r, s, bytes1(v));
     }
 
-    function switchSigner(address _newSigner) public {
-        vm.prank(_newSigner);
+    function switchSigner(address _newSigner, string memory user) public {
+        vm.startPrank(_newSigner);
+        vm.deal(_newSigner, 4 ether);
+        vm.label(_newSigner, user);
     }
 }

@@ -46,7 +46,7 @@ contract Marketplace {
 
     function createListing(Listing calldata l) public returns (uint256 lId) {
         if (ERC721(l.token).ownerOf(l.tokenId) != msg.sender)
-            revert NotApproved();
+            revert NotOwner();
         if (!ERC721(l.token).isApprovedForAll(msg.sender, address(this)))
             revert NotApproved();
         // if (l.token == address(0)) revert AddressZero();
@@ -58,7 +58,7 @@ contract Marketplace {
 
         // Assert signature
         if (
-            SignUtils.isValid(
+            !SignUtils.isValid(
                 SignUtils.constructMessageHash(
                     l.token,
                     l.tokenId,
