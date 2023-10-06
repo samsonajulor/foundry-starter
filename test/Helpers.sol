@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.13;
 
-import {Test, console2} from "forge-std/Test.sol";
-import "../src/libraries/SignUtils.sol";
+import {Test, console2} from "../lib/forge-std/src/Test.sol";
 
 abstract contract Helpers is Test {
     // uint256 user
@@ -22,7 +21,7 @@ abstract contract Helpers is Test {
         uint88 _deadline,
         address _seller,
         uint256 privKey
-    ) public returns (bytes memory sig) {
+    ) public pure returns (bytes memory sig) {
         bytes32 mHash = keccak256(
             abi.encodePacked(_token, _tokenId, _price, _deadline, _seller)
         );
@@ -43,9 +42,8 @@ abstract contract Helpers is Test {
         sig = bytes.concat(r, s, bytes1(v));
     }
 
-    function switchSigner(address _newSigner, string memory user) public {
+    function switchSigner(address _newSigner) public {
         vm.startPrank(_newSigner);
         vm.deal(_newSigner, 4 ether);
-        vm.label(_newSigner, user);
     }
 }

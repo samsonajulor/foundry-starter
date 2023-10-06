@@ -1,174 +1,278 @@
-// // SPDX-License-Identifier: MIT
-// pragma solidity ^0.8.0;
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
 
-// import {Test, console2} from "../lib/forge-std/src/Test.sol";
-// import {NFTMarketplace} from "../src/NFTMarketPlace.sol";
+import {Test, console2} from "../lib/forge-std/src/Test.sol";
+import {NFTMarketplace} from "../src/NFTMarketPlace.sol";
+
+import "../lib/openzeppelin-contracts/contracts/token/ERC721/IERC721.sol";
+import "../src/ERC721Mock.sol";
+import "./Helpers.sol";
 
 
-// import { ECDSA } from "../lib/openzeppelin-contracts/contracts/utils/cryptography/ECDSA.sol";
+contract NFTMarketplaceTest is Test {
+    // uint256 user
+    function mkaddr(
+        string memory name
+    ) public returns (address addr, uint256 privateKey) {
+        privateKey = uint256(keccak256(abi.encodePacked(name)));
+        // address addr = address(uint160(uint256(keccak256(abi.encodePacked(name)))))
+        addr = vm.addr(privateKey);
+        vm.label(addr, name);
+    }
 
-// import "../lib/openzeppelin-contracts/contracts/token/ERC721/IERC721.sol";
+    function constructSig(
+        address _token,
+        uint256 _tokenId,
+        uint256 _price,
+        uint256 _deadline,
+        uint256 privKey
+    ) public pure returns (bytes memory sig) {
+        bytes32 mHash = keccak256(
+            abi.encodePacked(_token, _tokenId, _price, _deadline)
+        );
 
-// interface INFTProto {
-//     function mintNFT(address recipient, string memory _tokenURI) external;
+        mHash = keccak256(
+            abi.encodePacked("\x19Ethereum Signed Message:\n32", mHash)
+        );
 
-//     function setApprovalForAll(address operator, bool _approved) external;
-// }
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(privKey, mHash);
+        sig = getSig(v, r, s);
+    }
 
-// contract NFTMarketplaceTest is Test {
-//     using ECDSA for bytes32;
+    function getSig(
+        uint8 v,
+        bytes32 r,
+        bytes32 s
+    ) public pure returns (bytes memory sig) {
+        sig = bytes.concat(r, s, bytes1(v));
+    }
 
-//     struct Order {
-//         address seller;
-//         uint256 tokenId;
-//         uint256 price;
-//         uint256 deadline;
-//         bool isActive;
-//         bytes signature;
+    function switchSigner(address _newSigner) public {
+        vm.startPrank(_newSigner);
+        vm.deal(_newSigner, 4 ether);
+    }
+    struct Order {
+        address seller;
+        uint256 tokenId;
+        uint256 price;
+        uint256 deadline;
+        bool isActive;
+        bytes signature;
+        address nftContractAddress;
+    }
+
+    NFTMarketplace public nftMarketPlaceContract;
+    OurNFT nft;
+
+    address userA;
+    address userB;
+    address userC;
+
+    uint256 privKeyA;
+    uint256 privKeyB;
+
+    uint256 price_;
+    // address nftContractAddress = 0x168Ca561E63C868b0F6cC10a711d0b4455864f17;
+    uint256 tokenId_;
+    uint256 _tradeState;
+
+    NFTMarketplace.Order order;
+
+    function setUp() public {
+        (userA, privKeyA) = mkaddr("USERA");
+        (userB, privKeyB) = mkaddr("USERB");
+
+        switchSigner(userA);
+
+        nftMarketPlaceContract = new NFTMarketplace( price_);
+
+        nft = new OurNFT();
+
+        tokenId_ = 1;
+        price_ = 2 ether;
+
+        order = NFTMarketplace.Order({
+            seller: msg.sender,
+            tokenId: tokenId_,
+            price: price_,
+            deadline: 0,
+            isActive: false,
+            signature: bytes(""),
+            nftContractAddress: address(nft)
+        });
+
+        // mint NFT
+        nft.mint(userA, 1);
+    }
+
+    function testUpdateTradeState() public {
+        switchSigner(userA);
+        nftMarketPlaceContract.updateTradeState(0, 1);
+        assertEq(nftMarketPlaceContract.tradeStates(0), 1);
+    }
+
+    function testOwnerCannotCreateOrder() public {
+        order.seller = userA;
+        switchSigner(userA);
+
+        vm.expectRevert(NFTMarketplace.OnlySellerError.selector);
+        nftMarketPlaceContract.createOrder(order.tokenId, order.price, order.deadline, order.signature, order.nftContractAddress);
+    }
+
+    function testValidTradeStateBeforeCreating() public {
+        switchSigner(userA);
+
+        nftMarketPlaceContract.updateTradeState(order.tokenId, 1);
+
+        switchSigner(userB);
+        vm.expectRevert(NFTMarketplace.InvalidTradeStateError.selector);
+        nftMarketPlaceContract.createOrder(order.tokenId, order.price, order.deadline, order.signature, order.nftContractAddress);
+    }
+
+    function testActiveOrderBeforeCreating() public {
+        switchSigner(userA);
+
+        nftMarketPlaceContract.toggleActive(order.tokenId, true);
+
+        switchSigner(userB);
+        vm.expectRevert(NFTMarketplace.NFTAlreadyListedError.selector);
+        nftMarketPlaceContract.createOrder(order.tokenId, order.price, order.deadline, order.signature, order.nftContractAddress);
+    }
+
+    function testListingFeeBeforeCreating() public {
+        switchSigner(userB);
+        vm.expectRevert(NFTMarketplace.IncorrectListingFeeError.selector);
+        nftMarketPlaceContract.createOrder{value: 1}(order.tokenId, order.price, order.deadline, order.signature, order.nftContractAddress);
+    }
+
+    function testDeadlineBeforeCreating() public {
+        switchSigner(userB);
+        order.deadline = block.timestamp - 1;
+        vm.expectRevert(NFTMarketplace.DeadlineInPastError.selector);
+        nftMarketPlaceContract.createOrder(order.tokenId, order.price, order.deadline, order.signature, order.nftContractAddress);
+    }
+
+    function testPriceNotZeroErrorBeforeCreating() public {
+        switchSigner(userB);
+        order.price = 0;
+        vm.expectRevert(NFTMarketplace.PriceZeroError.selector);
+        nftMarketPlaceContract.createOrder(order.tokenId, order.price, order.deadline + 500, order.signature, order.nftContractAddress);
+    }
+
+    function testApprovedBeforeCreating() public {
+        switchSigner(userB);
+        vm.expectRevert(NFTMarketplace.ContractNotApprovedError.selector);
+        nftMarketPlaceContract.createOrder(order.tokenId, order.price, order.deadline + 500, order.signature, order.nftContractAddress);
+    }
+
+    function testCreateOrder() public {
+        switchSigner(userB);
+        nft.setApprovalForAll(address(nftMarketPlaceContract), true);
+        nftMarketPlaceContract.createOrder(order.tokenId, order.price, order.deadline + 500, order.signature, order.nftContractAddress);
+        assertEq(nftMarketPlaceContract.orderCounter(), 1);
+        assertEq(nftMarketPlaceContract.tradeStates(0), 1);
+    }
+
+    function testGetOrder() public {
+        switchSigner(userB);
+        nft.setApprovalForAll(address(nftMarketPlaceContract), true);
+        nftMarketPlaceContract.createOrder(order.tokenId, order.price, order.deadline + 500, order.signature, order.nftContractAddress);
+        assertEq(nftMarketPlaceContract.orderCounter(), 1);
+        assertEq(nftMarketPlaceContract.tradeStates(0), 1);
+
+        (address seller, uint256 price, uint256 deadline, bool isActive, bytes memory signature) = nftMarketPlaceContract.getOrder(order.tokenId);
+        assertEq(seller, userB);
+        assertEq(price, order.price);
+        assertEq(deadline, order.deadline + 500);
+        assertEq(isActive, true);
+        assertEq(signature, order.signature);
+    }
+
+    function testTradeStateBeforExecuting() public {
+        switchSigner(userA);
+        vm.expectRevert(NFTMarketplace.InvalidTradeStateError.selector);
+        nftMarketPlaceContract.executeOrder(0);
+    }
+
+    function testPriceValueBeforeExecuting() public {
+        switchSigner(userB);
+        nft.setApprovalForAll(address(nftMarketPlaceContract), true);
+        nftMarketPlaceContract.createOrder(order.tokenId, order.price, order.deadline + 500, order.signature, order.nftContractAddress);
+        assertEq(nftMarketPlaceContract.orderCounter(), 1);
+        assertEq(nftMarketPlaceContract.tradeStates(0), 1);
+
+
+        vm.expectRevert(NFTMarketplace.PriceZeroError.selector);
+        nftMarketPlaceContract.executeOrder{value: 0.4 ether}(0);
+    }
+
+    function testOrderActiveBeforeExecuting() public {
+        switchSigner(userB);
+        nft.setApprovalForAll(address(nftMarketPlaceContract), true);
+        nftMarketPlaceContract.createOrder(order.tokenId, order.price, order.deadline + 500, order.signature, order.nftContractAddress);
+        assertEq(nftMarketPlaceContract.orderCounter(), 1);
+        assertEq(nftMarketPlaceContract.tradeStates(0), 1);
+
+        // toggle active
+        switchSigner(userA);
+        nftMarketPlaceContract.toggleActive(order.tokenId, false);
+
+        vm.expectRevert(NFTMarketplace.NFTAlreadyListedError.selector);
+        nftMarketPlaceContract.executeOrder(0);
+    }
+
+    function testValidOrderIdBeforeExecuting() public {
+        switchSigner(userB);
+        vm.expectRevert(NFTMarketplace.InvalidOrderIdError.selector);
+        nftMarketPlaceContract.executeOrder(4);
+    }
+
+    function testExecuteOrder() public {
+        switchSigner(userB);
+        nft.setApprovalForAll(address(nftMarketPlaceContract), true);
+
+        //create a valid signature;
+        order.signature = constructSig(order.nftContractAddress, order.tokenId, order.price, order.deadline + 500, privKeyB);
+        nftMarketPlaceContract.createOrder(order.tokenId, order.price, order.deadline + 500, order.signature, order.nftContractAddress);
+        assertEq(nftMarketPlaceContract.orderCounter(), 1);
+        assertEq(nftMarketPlaceContract.tradeStates(0), 1);
+
+        nftMarketPlaceContract.executeOrder(0);
+        assertEq(nftMarketPlaceContract.tradeStates(0), 2);
+
+    }
+}
+
+// function executeOrder(uint256 _orderId) external payable nonReentrant {
+//         if (tradeStates[_orderId] != 2) {
+//             revert InvalidTradeStateError();
+//         }
+//         if (msg.value != tokenIdToOrder[_orderId].price) {
+//             revert PriceZeroError();
+//         }
+//         if (!tokenIdToOrder[_orderId].isActive) {
+//             revert NFTAlreadyListedError();
+//         }
+//         if (tokenIdToOrder[_orderId].deadline < block.timestamp) {
+//             revert DeadlineInPastError();
+//         }
+//         if (tokenIdToOrder[_orderId].nftContractAddress != msg.sender) {
+//             revert InvalidTokenAddressError();
+//         }
+//         if  (_orderId >= orderCounter) {
+//             revert InvalidTokenAddressError();
+//         }
+//         Order storage order = tokenIdToOrder[_orderId];
+//         if (tradeStates[_orderId] == 2) {
+//             bytes32 messageHash = SignUtils.constructMessageHashV2(order.tokenId, order.price, order.seller, order.deadline);
+//             require(SignUtils.isValid(messageHash, order.signature, msg.sender), 'invalid signature');
+//             nftContract = IERC721(msg.sender);
+//             /** Transfer the NFT to the buyer **/
+//             nftContract.safeTransferFrom(order.seller, msg.sender, order.tokenId);
+
+//             /** Transfer the payment to the seller **/
+//             payable(order.seller).transfer(order.price);
+
+//             order.isActive = false;
+//         }
 //     }
-
-//     NFTMarketplace public nftMarketPlaceContract;
-
-//     uint256 internal _userPrivateKey;
-//     uint256 internal _signerPrivateKey;
-//     uint256 _price = 2 ether;
-//     address[] _tokenAddresses =[0x168Ca561E63C868b0F6cC10a711d0b4455864f17];
-//     uint256 _tokenId;
-//     uint256 _tradeState;
-
-//     function setUp() public {
-//         console2.logAddress(msg.sender);
-//         console2.logString("<<<<<<msg sender>>>>>>");
-
-//         nftMarketPlaceContract = new NFTMarketplace(_tokenAddresses, _price);
-
-//         _userPrivateKey = 0xa11ce;
-//         _signerPrivateKey = 0xabc123;
-
-//         _tokenId = 1;
-
-//         _tradeState = nftMarketPlaceContract.tradeStates(_tokenId);
-//     }
-
-//     function testCreateOrder() public {
-//         console2.logUint(_tradeState);
-//         console2.logString("<<<<<<trade state>>>>>>");
-
-//         (address seller, uint256 price, uint256 deadline, bool isActive, bytes memory signature) = nftMarketPlaceContract.getOrder(_tokenId);
-
-//         console2.logBool(isActive);
-//         console2.logString("<<<<<<isActive>>>>>>");
-
-//         console2.logBytes(signature);
-//         console2.logString("<<<<<<signature>>>>>>");
-
-//         console2.logAddress(seller);
-//         console2.logString("<<<<<<seller>>>>>>");
-
-//         deadline = block.timestamp + 1000;
-
-//         console2.logUint(deadline);
-//         console2.logString("<<<<<<deadline>>>>>>");
-
-//         price = _price;
-
-//         console2.logUint(price);
-//         console2.logString("<<<<<<price>>>>>>");
-
-//         nftMarketPlaceContract.addAcceptedNFTContract(msg.sender);
-
-//         console2.logAddress(nftMarketPlaceContract.acceptedNFTContracts(1));
-//         console2.logString("<<<<<<acceptedNFTContracts>>>>>>");
-//         console2.logAddress(msg.sender);
-
-//         vm.deal(msg.sender, price);
-
-//         //create a new nft contract
-//         INFTProto nftContract = INFTProto(nftMarketPlaceContract.acceptedNFTContracts(1));
-
-//     //    nftContract.setApprovalForAll(address(nftMarketPlaceContract), true);
-
-
-//         nftMarketPlaceContract.createOrder{value: price}(
-//             _tokenId,
-//             price,
-//             deadline,
-//             signature
-//         );
-//     }
-
-//     function testInvalidTradeState() public {
-//         console2.logUint(_tradeState);
-//         console2.logString("<<<<<<trade state>>>>>>");
-
-//         (address seller, uint256 price, uint256 deadline, bool isActive, bytes memory signature) = nftMarketPlaceContract.getOrder(_tokenId);
-
-//         deadline = block.timestamp + 1000;
-
-//         price = _price;
-
-
-//         nftMarketPlaceContract.createOrder{value: price}(
-//             _tokenId,
-//             price,
-//             deadline,
-//             signature
-//         );
-        
-//         vm.expectRevert(bytes("Invalid trade state"));
-//         nftMarketPlaceContract.createOrder{value: price}(
-//             _tokenId,
-//             price,
-//             deadline,
-//             signature
-//         );
-//     }
-
-
-
-//     // function testExecuteOrder() public {
-//     //     console2.logUint(_tradeState);
-//     //     console2.logString("<<<<<<trade state>>>>>>");
-
-//     //     (address seller, uint256 price, uint256 deadline, bool isActive, bytes memory signature) = nftMarketPlaceContract.getOrder(_tokenId);
-
-//     //     console2.logUint(price);
-//     //     console2.logString("<<<<<<price>>>>>>");
-
-//     //     console2.logBool(isActive);
-//     //     console2.logString("<<<<<<isActive>>>>>>");
-
-//     //     console2.logBytes(signature);
-//     //     console2.logString("<<<<<<signature>>>>>>");
-
-//     //     console2.logAddress(seller);
-//     //     console2.logString("<<<<<<seller>>>>>>");
-
-//     //     address user = vm.addr(_userPrivateKey);
-//     //     address signer = vm.addr(_signerPrivateKey);
-//     //     deadline = block.timestamp + 1000;
-
-//     //     console2.logUint(deadline);
-//     //     console2.logString("<<<<<<deadline>>>>>>");
-
-//     //     vm.startPrank(signer);
-//     //     // bytes32 digest = keccak256(abi.encodePacked(_tokenId, _price, user, deadline)).toEthSignedMessageHash();
-//     //     // (uint8 v, bytes32 r, bytes32 s) = vm.sign(_signerPrivateKey, digest);
-//     //     // bytes memory signature = abi.encodePacked(r, s, v); 
-//     //     // vm.stopPrank();
-
-//     //     // vm.startPrank(user);
-
-//     //     // vm.deal(user, _price);
-
-//     //     // nftMarketPlaceContract.createOrder{value: _price}(
-//     //     //     _tokenId,
-//     //     //     _price,
-//     //     //     deadline,
-//     //     //     signature
-//     //     // );
-//     //     // vm.stopPrank();
-//     // }
-// }
-
-

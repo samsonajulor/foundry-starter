@@ -14,6 +14,16 @@ library SignUtils {
         return keccak256(abi.encodePacked(_token, _tokenId, _price, _deadline, _seller));
     }
 
+
+    function constructMessageHashV2(
+        uint256 _tokenId,
+        uint256 _price,
+        address _seller,
+        uint256 _deadline
+    ) public pure returns (bytes32) {
+        return keccak256(abi.encodePacked(_tokenId, _price, _seller, _deadline));
+    }
+
     function isValid(
         bytes32 messageHash,
         bytes memory signature,
