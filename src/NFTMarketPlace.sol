@@ -141,8 +141,7 @@ contract NFTMarketplace is ReentrancyGuard, Ownable {
             nftContract.safeTransferFrom(order.seller, msg.sender, order.tokenId);
 
             /** Transfer the payment to the contract **/
-            payable(address(this)).transfer(msg.value);
-        
+            payable(address(this)).transfer(msg.value);  
 
             order.isActive = false;
         }

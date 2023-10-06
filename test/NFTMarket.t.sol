@@ -242,37 +242,3 @@ contract NFTMarketplaceTest is Test {
 
     }
 }
-
-// function executeOrder(uint256 _orderId) external payable nonReentrant {
-//         if (tradeStates[_orderId] != 2) {
-//             revert InvalidTradeStateError();
-//         }
-//         if (msg.value != tokenIdToOrder[_orderId].price) {
-//             revert PriceZeroError();
-//         }
-//         if (!tokenIdToOrder[_orderId].isActive) {
-//             revert NFTAlreadyListedError();
-//         }
-//         if (tokenIdToOrder[_orderId].deadline < block.timestamp) {
-//             revert DeadlineInPastError();
-//         }
-//         if (tokenIdToOrder[_orderId].nftContractAddress != msg.sender) {
-//             revert InvalidTokenAddressError();
-//         }
-//         if  (_orderId >= orderCounter) {
-//             revert InvalidTokenAddressError();
-//         }
-//         Order storage order = tokenIdToOrder[_orderId];
-//         if (tradeStates[_orderId] == 2) {
-//             bytes32 messageHash = SignUtils.constructMessageHashV2(order.tokenId, order.price, order.seller, order.deadline);
-//             require(SignUtils.isValid(messageHash, order.signature, msg.sender), 'invalid signature');
-//             nftContract = IERC721(msg.sender);
-//             /** Transfer the NFT to the buyer **/
-//             nftContract.safeTransferFrom(order.seller, msg.sender, order.tokenId);
-
-//             /** Transfer the payment to the seller **/
-//             payable(order.seller).transfer(order.price);
-
-//             order.isActive = false;
-//         }
-//     }
