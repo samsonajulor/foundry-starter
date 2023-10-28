@@ -7,8 +7,6 @@ import "../lib/openzeppelin-contracts/contracts/access/Ownable.sol";
 import {SignUtils} from "./libraries/SignUtils.sol";
 
 contract NFTMarketplace is ReentrancyGuard, Ownable {
-
-
     error OnlySellerError();
     error InvalidOrderIdError();
     error NFTContractNotAcceptedError();
